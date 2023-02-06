@@ -1,0 +1,21 @@
+#! /bin/bash
+# --------
+# File:        netinvm_run_all
+# Description: Script to start predefined virtual machines
+# Authors:     Carlos Perez Conde <carlos.perez@uv.es>
+# Copyright:   (c) 2016 Carlos Perez Conde <carlos.perez@uv.es>
+# Modifications:
+# - 2022-07-20, Carlos Perez: comment out dmzb for a faster Run all
+
+TITLE="NETinVM KVM"
+
+kdialog --title "$TITLE" --passivepopup "Run all started" 10
+
+# Start virtual machines
+netinvm_run -d 4 -A fw
+netinvm_run -d 2 -A exta
+netinvm_run -d 5 -A dmza
+# netinvm_run -d 6 -A dmzb
+netinvm_run -d 8 -A inta
+
+kdialog --title "$TITLE" --passivepopup "All running" 10

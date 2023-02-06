@@ -1,0 +1,118 @@
+#! /bin/bash
+# --------
+# File:        netinvm_console
+# Description: Script to attach to a virtual machine console
+#              The machine name must be exta-ext, dmza-dmzf, inta-intf or fw
+#              The console must be 1, 2, or 3
+# Authors:     Carlos Perez Conde <carlos.perez@uv.es>
+# Copyright:   (c) 2016 Carlos Perez Conde <carlos.perez@uv.es>
+# Modifications:
+# - 2017-06-01: activate console if it exists, Carlos Perez Conde
+# - 2022-06-30: kstart → kstart5
+#               add -- after $ICONIFY
+#               use -T instead of --title in $TERMINAL arguments
+# Modifications by Alejandro Habernaud <th3l4stl0st>
+# - 2023-02-04: Terminal changed to kitty
+#		--comand -> sh -c in ñaunch_terminal
+
+# Basic configuration
+VIRSH="virsh"
+TERMINAL=kitty
+
+# Nothing should be modified from this point on
+
+# Funcions
+usage()
+{
+        [ $# -ge 1 ] && echo "ERROR: $*"
+        echo "Usage: $PROGNAME [ -d desktop_number ] [-i] machine [console]"
+        echo "    -d desktop_number"
+        echo "         send console to desktop (default: current desktop)"
+        echo "    -i"
+        echo "         start console minimized (implies -A)"
+        echo "    -A"
+        echo "         do not activate console"
+        echo "    machine must be a valid NETinVM virtual machine"
+        echo '        "fw", "exta" to "extf", "inta" to "intf", or "dmza" to "dmzf"'
+        echo "    console must be 1, 2, or 3 (default: 1)"
+        exit 1
+}
+error()
+{
+        [ $# -ge 1 ] && echo "ERROR: $*"
+        exit 1
+}
+test_machine_name()
+{
+        [[ "$1" = ext[a-f] ]] ||
+        [[ "$1" = exta[a-f] ]] ||
+        [[ "$1" = dmz[a-f] ]] ||
+        [[ "$1" = dmza[a-f] ]] ||
+        [[ "$1" = int[a-f] ]] ||
+        [[ "$1" = inta[a-f] ]] ||
+        [[ "$1" = fw ]] ||
+        usage "Incorrect virtual machine name"
+}
+test_if_machine_is_running()
+{
+        [[ "$($VIRSH domstate $1)" = "running" ]] ||
+        error "Virtual machine '$1' is not running"
+}
+test_console_number()
+{
+        [[ "$1" = [1-3] ]] ||
+        usage "Incorrect console number"
+}
+process_arguments()
+{
+        # Process options first
+        DESKTOP=$(qdbus org.kde.KWin /KWin currentDesktop)
+        while getopts d:iA name
+        do
+                case $name in
+                d)    DESKTOP="$OPTARG";;
+                i)    ICONIFY="--iconify"
+                      ACTIVATE="";;
+                A)    ACTIVATE="";;
+                ?)    usage "Incorrect options";;
+                esac
+        done
+        shift $(($OPTIND - 1))
+#         printf "DEBUG: Remaining arguments are: %s\n" "$*"
+
+        # And then the arguments
+        [[ $# -ge 1 && $# -le 2 ]] || usage "Incorrect number of parameters"
+        VM_NAME="exta"
+        CONSOLE_NUMBER="1"
+        [ $# -gt 0 ] && {
+                VM_NAME=$1
+                test_machine_name $VM_NAME
+                test_if_machine_is_running $VM_NAME
+                shift
+        }
+        [ $# -gt 0 ] && {
+                CONSOLE_NUMBER=$1
+                test_console_number $CONSOLE_NUMBER
+                shift
+        }
+        CONSOLE="console$CONSOLE_NUMBER"
+}
+try_to_activate_terminal()
+{
+        [[ "$ACTIVATE" == "" ]] && return 1
+        echo "Trying to activate: $TITLE"
+        WINDOW_ID=$(xdotool search --name "$TITLE" | head -n 1)
+        [[ "$WINDOW_ID" != "" ]] && xdotool windowactivate $WINDOW_ID
+}
+launch_terminal()
+{
+        echo "Launching console $CONSOLE for machine $VM_NAME..."
+        kstart5 $ACTIVATE --window "$TITLE" --desktop $DESKTOP $ICONIFY -- $TERMINAL -T "$TITLE" sh -c "$VIRSH console $VM_NAME $CONSOLE" &
+}
+
+# Main program
+ACTIVATE="--activate"
+PROGNAME=$0
+process_arguments $*
+TITLE="$VM_NAME - $CONSOLE"
+try_to_activate_terminal || launch_terminal

@@ -1,0 +1,45 @@
+#!/bin/bash
+
+# This file is the shell script invoked by the icon "Run my machines"
+# 
+# The basic syntax for "netinvm_run" is:
+#   netinvm_run [-d desktop_number] virtual_machine
+# Valid desktops are 1 to 8
+# Valid virtual machines are:
+#      fw
+#      exta, extb, extc, extd, exte, extf
+#      dmza, dmzb, dmzc, dmzd, dmze, dmzf
+#      inta, intb, intc, intd, inte, intf
+
+TITLE="NETinVM KVM"
+
+kdialog --title "$TITLE" --passivepopup "Run all my machines started" 10
+
+# Launch fw.example.net, router and firewall
+# Mandatory for machines in int and dmz networks to have Internet access.
+# console windows will be in desktop 4 (-d 4)
+# do not activate main console window (-A)
+# netinvm_run -A -d 4 fw
+
+# Launch exta.example.net in desktop 2
+# netinvm_run -d 2 exta
+netinvm_run -d 2 -E exta
+netinvm_run -d 2 -E extb
+
+# Other variations would be:
+#   Launch exta in the current desktop and do not launch consoles 2 and 3 (extra consoles)
+#     netinvm_run -E exta
+#   Launch exta without consoles (equivalent to "virsh start exta")
+#     netinvm_run -C exta
+#
+
+# Launch inta.example.net in desktop 8
+# netinvm_run -d 8 -A inta
+
+# Launch dmza.example.net (www) in desktop 5
+# netinvm_run -d 5 -A dmza
+
+# Launch dmzb.example.net (ftp) in desktop 6
+# netinvm_run -d 6 -A dmzb
+
+kdialog --title "$TITLE" --passivepopup "All my machines running" 10

@@ -1,0 +1,107 @@
+#! /bin/bash
+
+# Basic configuration
+VIRSH="virsh -c qemu:///system"
+BASEDIR=/srv/netinvm
+IMAGESDIR=$BASEDIR/libvirt/images
+TEMPLATESDIR=$BASEDIR/libvirt/templates
+TEMPLATE_DOMAIN=debian11
+TEMPLATE_ALMA_DOMAIN=alma9
+TEMPLATE_SWAP_DISK="$TEMPLATESDIR/template-${TEMPLATE_DOMAIN}-swap.qcow2"
+TEMPLATE_ALMA_SWAP_DISK="$TEMPLATESDIR/template-${TEMPLATE_ALMA_DOMAIN}-swap.qcow2"
+
+DEFAULT_BKUP_DIR=$BASEDIR/backups
+
+[[ $($VIRSH list --name | wc -l) -eq 1 ]] || {
+        kdialog --error "Restoration cancelled.\nKVM machines must be stopped before a restoration can be started."
+        exit
+}
+
+cd "$IMAGESDIR" || { kdialog --msgbox "$IMAGESDIR doesn't exist. Exiting."; exit 1; }
+
+kdialog --warningyesno "Please note that this process will delete the current state of all KVM machines. Continue?" || {
+        kdialog --msgbox "Restoration cancelled."
+        exit 1
+}
+
+# Select TAR file to restore
+filename="$(kdialog --title "Select backup to restore" --getopenfilename $DEFAULT_BKUP_DIR 'kvm_machines_*.tgz')"
+[ $? -eq 0 ] || { echo "Operation cancelled!"; exit 1; }
+
+# check that SWAP template file exists
+[ -f "$TEMPLATE_SWAP_DISK" ] || {
+    kdialog --error "Restoration cancelled.\nSWAP template file '$TEMPLATE_SWAP_DISK' doesn't exist."
+    exit 1
+}
+
+# delete current SWAP disks
+rm -f $IMAGESDIR/*-swap.qcow2
+
+###
+### Begin of AlmaLinux specific code
+###
+
+# Create ALMA SWAP disks
+create_alma_swap_disk()
+{
+    MACHINE_NAME="$1"; shift
+    MACHINE_SWAP_DISK="$IMAGESDIR/${MACHINE_NAME}-swap.qcow2"
+    qemu-img create -b "$TEMPLATE_ALMA_SWAP_DISK" -f qcow2 "$MACHINE_SWAP_DISK" || {
+        kdialog --error "Restoration cancelled.\nSWAP file '$MACHINE_SWAP_DISK' can't be created."
+        exit 1
+    }
+}
+
+# check if ALMA SWAP template file exists
+[ -f "$TEMPLATE_ALMA_SWAP_DISK" ] && {
+    # if it exists, create swap disks for AlmaLinux domains
+    for n in ext dmz int
+    do
+        for m in a b c d e f
+        do
+            create_alma_swap_disk "${n}a${m}"
+        done
+    done
+
+}
+
+###
+### End of AlmaLinux specific code
+###
+
+
+# Create SWAP disks
+create_swap_disk()
+{
+    MACHINE_NAME="$1"; shift
+    MACHINE_SWAP_DISK="$IMAGESDIR/${MACHINE_NAME}-swap.qcow2"
+    qemu-img create -b "$TEMPLATE_SWAP_DISK" -f qcow2 "$MACHINE_SWAP_DISK" || {
+        kdialog --error "Restoration cancelled.\nSWAP file '$MACHINE_SWAP_DISK' can't be created."
+        exit 1
+    }
+}
+create_swap_disk "fw"
+for n in ext dmz int
+do
+    for m in a b c d e f
+    do
+        create_swap_disk "${n}${m}"
+    done
+done
+
+# delete current FS disks
+rm -f $IMAGESDIR/*-fs.qcow2
+
+# Restore with progress report (tar -b 20 sets block size at 20*512=10240 Bytes)
+echo "Restoring: $filename"
+n=$(gunzip --list "$filename" | awk '/backups/ { print $2 }')
+n=$(( $n / 10240 ))
+DBUSREF=$(kdialog --progressbar "Restoring backup from $filename" $n )
+export DBUSREF
+tar zxSf "$filename" -b 20 --checkpoint=100 --checkpoint-action="exec=dbus_setprogress.sh" >/dev/null
+qdbus $DBUSREF org.kde.kdialog.ProgressDialog.close
+
+# Done
+kdialog --msgbox "$filename restored"
+
+

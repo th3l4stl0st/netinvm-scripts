@@ -1,0 +1,102 @@
+#! /bin/bash
+# --------
+# File:        netinvm_run
+# Description: Script to start a NETinVM virtual machine
+#              The machine name must be exta-ext, dmza-dmzf, inta-intf or fw
+# Authors:     Carlos Perez Conde <carlos.perez@uv.es>
+# Copyright:   (c) 2016 Carlos Perez Conde <carlos.perez@uv.es>
+# Modifications:
+
+# Basic configuration
+VIRSH="virsh"
+TITLE="NETinVM KVM"
+MAIN_CONSOLE="yes"
+EXTRA_CONSOLES="yes"
+ACTIVATE_MAIN_CONSOLE="yes"
+
+# Nothing should be modified from this point on
+
+# Funcions
+usage()
+{
+        [ $# -ge 1 ] && echo "ERROR: $*"
+        echo "Usage: $PROGNAME [ -d desktop_number ] machine"
+        echo "    -d desktop_number"
+        echo "         start consoles in this desktop (default: current desktop)"
+        echo "    -E do not launch extra consoles (2 and 3)"
+        echo "    -C do not launch any console"
+        echo "    -A do not activate the main console (console 1)"
+        echo "    machine must be a valid NETinVM virtual machine"
+        echo '        "fw", "exta" to "extf", "inta" to "intf", or "dmza" to "dmzf"'
+        exit 1
+}
+error()
+{
+        [ $# -ge 1 ] && echo "ERROR: $*"
+        exit 1
+}
+test_machine_name()
+{
+        [[ "$1" = ext[a-f] ]] ||
+        [[ "$1" = exta[a-f] ]] ||
+        [[ "$1" = dmz[a-f] ]] ||
+        [[ "$1" = dmza[a-f] ]] ||
+        [[ "$1" = int[a-f] ]] ||
+        [[ "$1" = inta[a-f] ]] ||
+        [[ "$1" = fw ]] ||
+        usage "Incorrect virtual machine name"
+}
+test_if_machine_is_running()
+{
+        [[ "$($VIRSH domstate $1)" = "running" ]] && {
+                echo "INFO: Virtual machine '$1' is already running"
+                [[ "$ACTIVATE_MAIN_CONSOLE" == "yes" ]] && netinvm_console -d $DESKTOP $VM_NAME 1
+                exit 0
+        }
+}
+process_arguments()
+{
+        # Process options first
+        DESKTOP=$(qdbus org.kde.KWin /KWin currentDesktop)
+        while getopts d:ECA name
+        do
+                case $name in
+                d)    DESKTOP="$OPTARG";;
+                E)    EXTRA_CONSOLES="no";;    
+                C)    MAIN_CONSOLE="no"
+                      EXTRA_CONSOLES="no";;    
+                A)    ACTIVATE_MAIN_CONSOLE="no";;    
+                ?)    usage "Incorrect options";;
+                esac
+         done
+        shift $(($OPTIND - 1))
+#         printf "DEBUG: Remaining arguments are: %s\n" "$*"
+
+        # And then the arguments
+        [[ $# -eq 1 ]] || usage "Incorrect number of parameters"
+        VM_NAME="exta"
+        [ $# -gt 0 ] && {
+                VM_NAME=$1
+                test_machine_name $VM_NAME
+                test_if_machine_is_running $VM_NAME
+                shift
+        }
+}
+launch_vm()
+{
+        echo "Starting virtual machine $VM_NAME..."
+        $VIRSH start $VM_NAME
+        DO_NOT_ACTIVATE="-A"
+        [[ "$ACTIVATE_MAIN_CONSOLE" == "yes" ]] && DO_NOT_ACTIVATE=""
+        [[ "$MAIN_CONSOLE" == "yes" ]] && netinvm_console $DO_NOT_ACTIVATE -d $DESKTOP $VM_NAME 1
+        [[ "$EXTRA_CONSOLES" == "yes" ]] && {
+            netinvm_console -d $DESKTOP -i $VM_NAME 2
+            netinvm_console -d $DESKTOP -i $VM_NAME 3
+        }
+        kdialog --title "$TITLE" --passivepopup "$VM_NAME started" 5 
+}
+
+# Main program
+PROGNAME=$0
+process_arguments $*
+launch_vm

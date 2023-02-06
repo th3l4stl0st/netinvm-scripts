@@ -1,0 +1,60 @@
+ 
+#! /bin/bash
+
+KVM_MACHINES=$(echo -n "fw"; for n in ext int dmz; do for m in a b c d e f; do echo -n " $n$m"; done; done)
+MEMORY="512M"
+
+# Funciones auxiliares
+uso()
+{
+    cat << FIN >&2
+$0 [mem]
+    mem - tamaño de memoria (admite sufijos 'K', 'M' y 'G'; por defecto, 'K')
+          (si no se especifica el tamaño, se asigna un tamaño automáticamente, 
+          en función de la memoria disponible)
+FIN
+    exit 1
+}
+
+# pruebas previas
+# debe ejecutarse como "user1" en "base"
+[[ "$USER" == "user1" ]] || { 
+    echo "ERROR: Debe ser ejecutado por el usuario 'user1', no por '$USER'"
+    exit 1
+}
+[[ "$HOSTNAME" == "base" ]] || { 
+    echo "ERROR: Debe ser ejecutado en 'base', no en '$HOSTNAME'"
+    exit 1
+}
+# puede tener un argumento, que se usará como memoria
+if [[ $# -eq 1 ]] 
+then
+    MEMORY="$1"; shift
+else
+    SYSTEM_MEMORY_MB=$(cat /proc/meminfo | grep -i memtotal | awk '{print $2}')
+#     echo "SYSTEM_MEMORY_MB='$SYSTEM_MEMORY_MB'"
+    SYSTEM_MEMORY_MB=$((SYSTEM_MEMORY_MB/1024))
+#     SYSTEM_MEMORY_MB=2500
+#     echo "SYSTEM_MEMORY_MB='$SYSTEM_MEMORY_MB'"
+    MEMORY="$((SYSTEM_MEMORY_MB*13/100))M"
+#     echo "Memoria para cada KVM: $MEMORY"
+#     echo "Memoria para el sistema (con 6 KVMs): $((SYSTEM_MEMORY_MB-MEMORY*6))"
+fi
+[[ $# -eq 0 ]] || uso
+
+
+echo "Ajustando la memoria de las KVM para el siguiente arranque"
+for m in $KVM_MACHINES
+do
+    echo "- ajustando a $MEMORY la memoria de '$m'"
+    virsh setmem $m $MEMORY --config >/dev/null
+done
+
+echo "Ajustando la memoria de las máquinas en ejecución"
+for m in $KVM_MACHINES
+do
+    [[ "$(virsh domstate $m)"  == "running" ]] && {
+        echo "- ajustando a $MEMORY la memoria de '$m'"
+        virsh setmem $m $MEMORY >/dev/null
+    }
+done

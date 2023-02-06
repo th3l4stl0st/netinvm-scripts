@@ -1,0 +1,20 @@
+#! /bin/bash
+# --------
+# File:        netinvm_resume-vm
+# Description: Script to update the clock on KVM machines when base resumes
+#              A symbolic link must be created at:
+#                /etc/vmware-tools/scripts/resume-vm-default.d/
+#              (Maybe necessary to create the directory.)
+# Authors:     Carlos Perez Conde <carlos.perez@uv.es>
+# Copyright:   (c) 2020 Carlos Perez Conde <carlos.perez@uv.es>
+# Modifications:
+
+# Basic configuration
+VIRSH="virsh -c qemu:///system"
+
+logger -p local0.notice "$0 $*: invoked"
+for m in $(virsh list --name)
+do 
+    OUTPUT="$(virsh qemu-agent-command $m '{"execute":"guest-set-time"}' 2>&1)"
+    logger -p local0.notice "$0 guest-set-time on $m: $OUTPUT"
+done

@@ -1,0 +1,21 @@
+#! /bin/bash
+# --------
+# File:        netinvm_shutdown_all
+# Description: Script to gracefully shutdown all virtual machines
+#              All running KVM machines are stopped by this script!
+# Authors:     Carlos Perez Conde <carlos.perez@uv.es>
+# Copyright:   (c) 2016 Carlos Perez Conde <carlos.perez@uv.es>
+# Modifications:
+
+# Basic configuration
+VIRSH="virsh -c qemu:///system"
+TITLE="NETinVM KVM"
+
+# Shutdown virtual machines
+kdialog --title "$TITLE" --passivepopup "Shutdown all started" 10
+for x in $($VIRSH list --name)
+do
+    $VIRSH shutdown $x
+    kdialog --title "$TITLE" --passivepopup "$x shutting down" 5 
+done
+kdialog --title "$TITLE" --passivepopup "All shut down" 10 

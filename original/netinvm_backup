@@ -1,0 +1,45 @@
+#! /bin/bash
+
+# Basic configuration
+VIRSH="virsh -c qemu:///system"
+BASEDIR=/srv/netinvm
+IMAGESDIR=$BASEDIR/libvirt/images
+DEFAULT_BKUP_DIR=$BASEDIR/backups
+DEFAULT_FILENAME="kvm_machines_$(date +%Y-%m-%d_%H-%M).tgz"
+
+[[ $($VIRSH list --name | wc -l) -eq 1 ]] || {
+	kdialog --error "Backup cancelled.\nKVM machines must be stopped before a backup can be started."
+	exit
+}
+
+# Get filename
+filename=$DEFAULT_BKUP_DIR/$DEFAULT_FILENAME
+kdialog --yesnocancel "Backup will be saved as: $filename\nPlease note that typical backups take between 2 to 5 minutes to complete.\nPress 'Yes' to accept, 'No' to be able to change the file name and directory or 'Cancel' to cancel the backup."
+r=$?
+[ $r -eq 2 ] && { kdialog --msgbox "Backup cancelled."; exit 1; }
+[ $r -eq 1 ] && {
+	# Ask for a new filename 
+	filename=$(kdialog --title "Select name for backup" --getsavefilename $DEFAULT_BKUP_DIR 'kvm_machines_*.tgz')
+	[ $? -eq 0 ] || { kdialog --msgbox "Backup cancelled."; exit 1; }
+}
+
+if [ -a $filename ]
+then
+	kdialog --warningyesno "$filename exists, overwrite it?" || {
+		kdialog --msgbox "Backup cancelled."
+		exit 1
+	}
+fi
+
+# Save with progress report (tar -b 20 sets block size at 20*512=10240 Bytes)
+cd $IMAGESDIR || { kdialog --msgbox "$IMAGESDIR doesn't exist. Exiting."; exit 1; }
+n=$(du -s -B 10240 . | cut -f 1)
+DBUSREF=$(kdialog --progressbar "Saving backup as $filename" $n)
+export DBUSREF
+# echo "DEBUG: dcopref $DBUSREF"
+tar zcSf $filename -b 20 --checkpoint=100 --checkpoint-action="exec=dbus_setprogress.sh" *-fs.* >/dev/null
+qdbus $DBUSREF org.kde.kdialog.ProgressDialog.close
+
+# Done
+kdialog --msgbox "Backup saved as $filename"
+
